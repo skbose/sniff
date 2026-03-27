@@ -285,6 +285,9 @@ async def run_shadow(
             )
         shadow_duration_ms = (loop.time() - t_start) * 1000
         shadow_response = upstream_resp.json()
+        if upstream_resp.status_code != 200:
+            err = shadow_response.get("error", shadow_response)
+            print(f"  [ab] shadow API error ({experiment.name}): HTTP {upstream_resp.status_code} — {err}", flush=True)
     except Exception as exc:
         print(f"  [ab] shadow HTTP error ({experiment.name}): {exc}", flush=True)
         return
