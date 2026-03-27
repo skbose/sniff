@@ -1,0 +1,7 @@
+sniff-logs/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env

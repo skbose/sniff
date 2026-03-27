@@ -1,0 +1,12 @@
+[project]
+name = "sniff"
+version = "0.1.0"
+description = "Transparent proxy that intercepts and logs Anthropic API calls"
+requires-python = ">=3.13"
+dependencies = [
+    "anyio>=4.13.0",
+    "fastapi>=0.135.2",
+    "httpx>=0.28.1",
+    "langfuse>=4.0.1",
+    "uvicorn[standard]>=0.42.0",
+]
