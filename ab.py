@@ -273,7 +273,8 @@ async def run_shadow(
     STRIP_REQ = {"host", "content-length", "accept-encoding"}
     fwd_headers = {k: v for k, v in req_headers.items() if k.lower() not in STRIP_REQ}
 
-    t_start = asyncio.get_event_loop().time()
+    loop = asyncio.get_running_loop()
+    t_start = loop.time()
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             upstream_resp = await client.post(
@@ -281,7 +282,7 @@ async def run_shadow(
                 content=shadow_bytes,
                 headers=fwd_headers,
             )
-        shadow_duration_ms = (asyncio.get_event_loop().time() - t_start) * 1000
+        shadow_duration_ms = (loop.time() - t_start) * 1000
         shadow_response = upstream_resp.json()
     except Exception as exc:
         print(f"  [ab] shadow HTTP error ({experiment.name}): {exc}", flush=True)
@@ -368,7 +369,7 @@ def maybe_schedule_shadow(
         return None, None, None
 
     ab_group_id = uuid4().hex[:12]
-    primary_done: asyncio.Future[dict] = asyncio.get_event_loop().create_future()
+    primary_done: asyncio.Future[dict] = asyncio.get_running_loop().create_future()
 
     asyncio.create_task(
         run_shadow(

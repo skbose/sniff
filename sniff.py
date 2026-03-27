@@ -489,7 +489,7 @@ async def proxy_messages(request: Request) -> Response:
 
     call_id = uuid4().hex[:12]
     timestamp = datetime.utcnow().isoformat() + "Z"
-    t_start = asyncio.get_event_loop().time()
+    t_start = asyncio.get_running_loop().time()
 
     model = req_body.get("model", "?")
     n_msgs = len(req_body.get("messages", []))
@@ -499,14 +499,18 @@ async def proxy_messages(request: Request) -> Response:
         flush=True,
     )
 
-    ab_group_id, ab_experiment, primary_done = ab.maybe_schedule_shadow(
-        call_id=call_id,
-        req_body=req_body,
-        req_headers=req_headers,
-        lf=lf,
-        lf_propagate=lf_propagate if _langfuse_available else None,
-        session_id=SESSION_ID,
-    )
+    try:
+        ab_group_id, ab_experiment, primary_done = ab.maybe_schedule_shadow(
+            call_id=call_id,
+            req_body=req_body,
+            req_headers=req_headers,
+            lf=lf,
+            lf_propagate=lf_propagate if _langfuse_available else None,
+            session_id=SESSION_ID,
+        )
+    except Exception as exc:
+        print(f"  [ab] scheduling error: {exc}", flush=True)
+        ab_group_id, ab_experiment, primary_done = None, None, None
 
     if is_stream:
         return await handle_streaming(
