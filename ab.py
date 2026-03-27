@@ -142,22 +142,27 @@ def apply_overrides(req_body: dict, exp: Experiment) -> dict:
 
 def _response_stats(response_obj: dict) -> dict:
     content = response_obj.get("content", [])
-    text_len = sum(
-        len(b.get("text", ""))
+    text_parts = [
+        b.get("text", "")
         for b in content
         if isinstance(b, dict) and b.get("type") == "text"
-    )
-    tool_count = sum(
-        1 for b in content if isinstance(b, dict) and b.get("type") == "tool_use"
-    )
+    ]
+    response_text = "\n".join(text_parts)
+    tool_calls = [
+        b.get("name", "unknown")
+        for b in content
+        if isinstance(b, dict) and b.get("type") == "tool_use"
+    ]
     usage = response_obj.get("usage", {})
     return {
         "model": response_obj.get("model"),
         "stop_reason": response_obj.get("stop_reason"),
         "input_tokens": usage.get("input_tokens", 0),
         "output_tokens": usage.get("output_tokens", 0),
-        "response_length": text_len,
-        "tool_call_count": tool_count,
+        "response_length": len(response_text),
+        "tool_call_count": len(tool_calls),
+        "response_text": response_text,
+        "tool_calls": tool_calls,
     }
 
 
