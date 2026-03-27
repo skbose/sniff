@@ -245,7 +245,8 @@ async def send_shadow_to_langfuse(
                     "ab_variant": "treatment",
                 },
             ):
-                pass
+                trace_url = lf.get_trace_url()
+                print(f"  [ab] langfuse treatment → {trace_url}", flush=True)
     except Exception as exc:
         print(f"  [ab] langfuse error: {exc}", flush=True)
 
