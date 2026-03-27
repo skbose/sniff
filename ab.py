@@ -274,6 +274,12 @@ async def run_shadow(
     STRIP_REQ = {"host", "content-length", "accept-encoding"}
     fwd_headers = {k: v for k, v in req_headers.items() if k.lower() not in STRIP_REQ}
 
+    # Use the user's own API key for shadow requests so they aren't bound
+    # to Claude Code's internal account (which may not have access to all models).
+    own_key = os.getenv("ANTHROPIC_API_KEY")
+    if own_key:
+        fwd_headers["x-api-key"] = own_key
+
     loop = asyncio.get_running_loop()
     t_start = loop.time()
     try:
