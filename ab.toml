@@ -1,0 +1,50 @@
+# ab.toml — A/B experiment definitions for sniff
+#
+# Each [[experiment]] block defines one shadow experiment.
+# The first matching experiment fires; others are skipped.
+#
+# Fields:
+#   name        (string, required)  — used as the JSONL filename and Langfuse tag
+#   enabled     (bool, required)    — set false to skip entirely
+#   sample_rate (float 0.0–1.0)     — fraction of eligible calls to shadow
+#
+# [experiment.filter]  (optional)
+#   Any key = value pairs are matched against the request body.
+#   All must match for the experiment to be eligible.
+#
+# [experiment.variant_b]  (optional overrides)
+#   model           — replace the model
+#   system_append   — append text to the system prompt (mutually exclusive with system_replace)
+#   system_replace  — replace the entire system prompt
+#   temperature     — override temperature
+#   max_tokens      — override max_tokens
+
+# ---------------------------------------------------------------------------
+# Example 1: compare a cheaper model against the primary
+# Disabled by default — set enabled = true and fill in the model names to use.
+# ---------------------------------------------------------------------------
+
+[[experiment]]
+name        = "cheaper-model"
+enabled     = false
+sample_rate = 0.5
+
+[experiment.filter]
+# Only shadow calls that use this specific model
+# model = "claude-opus-4-6"
+
+[experiment.variant_b]
+# model = "claude-sonnet-4-6"
+
+# ---------------------------------------------------------------------------
+# Example 2: test a system prompt tweak
+# Disabled by default — set enabled = true to activate.
+# ---------------------------------------------------------------------------
+
+[[experiment]]
+name        = "concise-prompt"
+enabled     = false
+sample_rate = 1.0
+
+[experiment.variant_b]
+system_append = "\n\nBe maximally concise. Prefer short responses."

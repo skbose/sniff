@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import ab
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
@@ -221,6 +222,7 @@ async def send_to_langfuse(
     streaming: bool,
     req_body: dict,
     response_obj: dict,
+    ab_meta: dict | None = None,
 ) -> None:
     """Send a captured call to Langfuse as a generation with nested tool spans."""
     if lf is None:
@@ -272,6 +274,7 @@ async def send_to_langfuse(
                     "streaming": streaming,
                     "stop_reason": response_obj.get("stop_reason"),
                     "duration_ms": round(duration_ms, 2),
+                    **(ab_meta or {}),
                 },
             ):
                 for tool in tool_pairs:
@@ -300,6 +303,9 @@ async def write_log(
     req_headers: dict,
     response_obj: dict,
     sse_events: list[dict] | None = None,
+    ab_group_id: str | None = None,
+    ab_experiment: str | None = None,
+    primary_done: "asyncio.Future | None" = None,
 ) -> None:
     """Write a single call log to disk as JSON."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -329,12 +335,27 @@ async def write_log(
     filename.write_text(json.dumps(log_entry, indent=2, default=str))
     print(f"  [sniff] logged → {filename}", flush=True)
 
+    # Resolve the primary_done future so any waiting shadow task can proceed
+    if primary_done is not None and not primary_done.done():
+        # Attach duration so shadow can include it in the comparison record
+        response_obj["_duration_ms"] = round(duration_ms, 2)
+        primary_done.set_result(response_obj)
+
+    ab_meta = None
+    if ab_group_id:
+        ab_meta = {
+            "ab_group_id": ab_group_id,
+            "ab_experiment": ab_experiment,
+            "ab_variant": "control",
+        }
+
     await send_to_langfuse(
         call_id=call_id,
         duration_ms=duration_ms,
         streaming=streaming,
         req_body=req_body,
         response_obj=response_obj,
+        ab_meta=ab_meta,
     )
 
 
@@ -349,6 +370,9 @@ async def handle_non_streaming(
     call_id: str,
     timestamp: str,
     t_start: float,
+    ab_group_id: str | None = None,
+    ab_experiment: str | None = None,
+    primary_done: "asyncio.Future | None" = None,
 ) -> Response:
     """Forward a non-streaming request and log the response."""
     STRIP_REQ = {"host", "content-length", "accept-encoding"}
@@ -378,6 +402,9 @@ async def handle_non_streaming(
             req_body=req_body,
             req_headers=req_headers,
             response_obj=resp_json,
+            ab_group_id=ab_group_id,
+            ab_experiment=ab_experiment,
+            primary_done=primary_done,
         )
     )
 
@@ -401,6 +428,9 @@ async def handle_streaming(
     call_id: str,
     timestamp: str,
     t_start: float,
+    ab_group_id: str | None = None,
+    ab_experiment: str | None = None,
+    primary_done: "asyncio.Future | None" = None,
 ) -> StreamingResponse:
     """Forward a streaming request, capture SSE, and log after completion."""
     STRIP_REQ = {"host", "content-length", "accept-encoding"}
@@ -433,6 +463,9 @@ async def handle_streaming(
                 req_headers=req_headers,
                 response_obj=reconstructed,
                 sse_events=sse_events,
+                ab_group_id=ab_group_id,
+                ab_experiment=ab_experiment,
+                primary_done=primary_done,
             )
         )
 
@@ -466,10 +499,27 @@ async def proxy_messages(request: Request) -> Response:
         flush=True,
     )
 
+    ab_group_id, ab_experiment, primary_done = ab.maybe_schedule_shadow(
+        call_id=call_id,
+        req_body=req_body,
+        req_headers=req_headers,
+        lf=lf,
+        lf_propagate=lf_propagate if _langfuse_available else None,
+        session_id=SESSION_ID,
+    )
+
     if is_stream:
-        return await handle_streaming(req_body, req_headers, body_bytes, call_id, timestamp, t_start)
+        return await handle_streaming(
+            req_body, req_headers, body_bytes, call_id, timestamp, t_start,
+            ab_group_id=ab_group_id, ab_experiment=ab_experiment,
+            primary_done=primary_done,
+        )
     else:
-        return await handle_non_streaming(req_body, req_headers, body_bytes, call_id, timestamp, t_start)
+        return await handle_non_streaming(
+            req_body, req_headers, body_bytes, call_id, timestamp, t_start,
+            ab_group_id=ab_group_id, ab_experiment=ab_experiment,
+            primary_done=primary_done,
+        )
 
 
 @app.get("/health")
@@ -502,6 +552,10 @@ async def startup() -> None:
     print(f"[sniff] upstream   : {UPSTREAM}", flush=True)
     print(f"[sniff] log dir    : {LOG_DIR.resolve()}", flush=True)
     print(f"[sniff] langfuse   : {'enabled' if lf else 'disabled (set LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY)'}", flush=True)
+
+    ab.init(Path("ab.toml"), upstream=UPSTREAM)
+    active_exps = [e.name for e in ab._experiments if e.enabled]
+    print(f"[sniff] ab tests   : {len(active_exps)} active {active_exps if active_exps else '(edit ab.toml to enable)'}", flush=True)
     print(f"", flush=True)
     print(f"  To use with Claude Code:", flush=True)
     print(f"    ANTHROPIC_BASE_URL=http://localhost:{PORT} claude", flush=True)

@@ -1,4 +1,5 @@
 sniff-logs/
+comparisons/
 __pycache__/
 *.pyc
 *.pyo
