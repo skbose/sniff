@@ -12,6 +12,7 @@ module is a complete no-op.
 import asyncio
 import copy
 import json
+import os
 import random
 import tomllib
 from dataclasses import dataclass, field
